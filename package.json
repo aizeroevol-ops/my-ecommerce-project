@@ -1,0 +1,13 @@
+{
+    "mcpServers": [
+        "ghcr.io/supabase-community/supabase-mcp",
+        "ghcr.io/context-labs/context",
+        "ghcr.io/gordin/desktop-commander",
+        "ghcr.io/smithery-ai/github"
+    ],
+    "dependencies": {
+        "cors": "^2.8.5",
+        "express": "^5.1.0",
+        "pg": "^8.16.3"
+    }
+}
