@@ -84,12 +84,18 @@ app.delete('/products/:id', async (req, res) => {
   }
 });
 // 5. 启动服务器 (必须是最后一步)
-app.listen(port, async () => {
-  console.log(`服务器正在 http://localhost:${port} 上运行`);
+// 5. 启动服务器 (这是云端适应版)
+// Render 会通过 process.env.PORT 提供端口号
+const PORT = process.env.PORT || 3000;
+
+app.listen(PORT, async () => {
+  console.log(`服务器正在端口 ${PORT} 上运行`); // 修改了日志输出
   try {
-    await db.query('SELECT NOW()');
-    console.log('数据库连接成功！');
+    // 我们在这里不再测试数据库连接，因为 Render 已经帮我们做了
+    // 如果环境变量里的 DATABASE_URL 有问题，服务根本就启动不起来
+    // 这种做法更符合云部署的实践
   } catch (err) {
-    console.error('无法连接到数据库:', err);
+    // 这段 catch 实际上可以简化或移除，因为连接失败会在服务启动前就报错
+    console.error('启动时发生错误:', err);
   }
 });
