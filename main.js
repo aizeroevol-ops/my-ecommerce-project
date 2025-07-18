@@ -7,11 +7,7 @@ document.addEventListener('DOMContentLoaded', () => {
   // 确保这些环境变量在 Netlify 中设置了 VITE_SUPABASE_URL 和 VITE_SUPABASE_ANON_KEY
   const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
   const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY;
-
-  // --- 调试：请确保这两行存在 ---
-  console.log('DEBUG: SUPABASE_URL is', SUPABASE_URL);
-  console.log('DEBUG: SUPABASE_ANON_KEY is', SUPABASE_ANON_KEY);
-  // --- 调试结束 ---
+  
 
   // --- 获取商品列表的函数 ---
   async function fetchProducts() {
