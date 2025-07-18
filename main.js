@@ -1,30 +1,49 @@
-// 当整个HTML页面加载完毕后，再执行我们的代码
 document.addEventListener('DOMContentLoaded', () => {
 
-  // --- 集中获取页面元素，方便管理 ---
   const productsList = document.getElementById('products-list');
   const addProductForm = document.getElementById('add-product-form');
 
-  // ---------------------------------------------
-  // --- 函数定义区 (我们所有的“能力”都定义在这里) ---
-  // ---------------------------------------------
+  // --- 关键配置：从环境变量中读取 Supabase URL 和 Anon Key ---
+  // 确保这些环境变量在 Netlify 中设置了 VITE_SUPABASE_URL 和 VITE_SUPABASE_ANON_KEY
+  const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
+  const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY;
 
-  // 1. 能力：获取所有商品
+  // --- 调试：请确保这两行存在 ---
+  console.log('DEBUG: SUPABASE_URL is', SUPABASE_URL);
+  console.log('DEBUG: SUPABASE_ANON_KEY is', SUPABASE_ANON_KEY);
+  // --- 调试结束 ---
+
+  // --- 获取商品列表的函数 ---
   async function fetchProducts() {
     try {
-      const response = await fetch('http://localhost:3000/products');
-      if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+      // 在发起请求前，检查 Supabase 配置是否已加载
+      if (!SUPABASE_URL || !SUPABASE_ANON_KEY) {
+        console.error("Supabase URL or Anon Key is missing. Please check your Netlify environment variables.");
+        productsList.innerHTML = '<li>加载商品失败：配置错误。</li>';
+        return;
+      }
+
+      const response = await fetch(`${SUPABASE_URL}/rest/v1/products?select=*`, {
+        headers: { 'apikey': SUPABASE_ANON_KEY }
+      });
+
+      if (!response.ok) {
+        // 如果响应不成功（例如 401 Unauthorized, 403 Forbidden），抛出错误
+        const errorData = await response.json();
+        throw new Error(`获取商品失败：${response.status} - ${errorData.message || response.statusText}`);
+      }
+
       const products = await response.json();
       displayProducts(products);
     } catch (error) {
       console.error("无法获取商品:", error);
-      productsList.innerHTML = '<li>加载商品失败，请确认后端服务器是否正在运行。</li>';
+      productsList.innerHTML = `<li>加载商品失败：${error.message || '未知错误'}。</li>`;
     }
   }
 
-  // 2. 能力：将商品显示在页面上
+  // --- 显示商品列表的函数 ---
   function displayProducts(products) {
-    productsList.innerHTML = '';
+    productsList.innerHTML = ''; // 清空现有列表
     if (products.length === 0) {
       productsList.innerHTML = '<li>当前没有商品。</li>';
       return;
@@ -33,121 +52,105 @@ document.addEventListener('DOMContentLoaded', () => {
       const listItem = document.createElement('li');
       listItem.innerHTML = `
         <h3>${product.name}</h3>
-        <p><strong>描述:</strong> ${product.description_en}</p>
-        <p><strong>价格:</strong> $${product.price}</p>
-        <button class="edit-btn" data-id="${product.id}">编辑</button>
+        <p><strong>描述(英文):</strong> ${product.description_en || '无'}</p>
+        <p><strong>描述(中文):</strong> ${product.description_zh || '无'}</p>
+        <p><strong>描述(阿拉伯语):</strong> ${product.description_ar || '无'}</p>
+        <p><strong>价格:</strong> $${product.price ? product.price.toFixed(2) : 'N/A'}</p>
+        ${product.image_url ? `<img src="${product.image_url}" alt="${product.name}" style="max-width:100px; max-height:100px;">` : ''}
         <button class="delete-btn" data-id="${product.id}">删除</button>
       `;
       productsList.appendChild(listItem);
     });
-  }
 
-  // 3. 能力：删除一个商品
-  async function deleteProduct(id) {
-    try {
-      const response = await fetch(`http://localhost:3000/products/${id}`, { method: 'DELETE' });
-      if (!response.ok) throw new Error('删除请求失败');
-      console.log(`ID为 ${id} 的商品已成功从数据库删除`);
-      fetchProducts();
-    } catch (error) {
-      console.error('删除商品时出错:', error);
-      alert('删除商品失败！');
-    }
-  }
-
-  // 4. 能力：更新一个商品
-  async function updateProduct(id, data) {
-    try {
-      const response = await fetch(`http://localhost:3000/products/${id}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(data)
+    // 为所有删除按钮添加事件监听器
+    document.querySelectorAll('.delete-btn').forEach(button => {
+      button.addEventListener('click', async (event) => {
+        const productId = event.target.dataset.id;
+        if (confirm(`确定要删除商品 ID: ${productId} 吗？`)) {
+          await deleteProduct(productId);
+          fetchProducts(); // 重新加载商品列表
+        }
       });
-      if (!response.ok) throw new Error('更新请求失败');
-      console.log(`ID为 ${id} 的商品已成功更新`);
-      fetchProducts();
+    });
+  }
+
+  // --- 添加商品的函数 ---
+  async function addProduct(productData) {
+    try {
+      if (!SUPABASE_URL || !SUPABASE_ANON_KEY) {
+        throw new Error("Supabase URL or Anon Key is missing. Cannot add product.");
+      }
+      const response = await fetch(`${SUPABASE_URL}/rest/v1/products`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'apikey': SUPABASE_ANON_KEY // 使用 anon key 进行插入操作
+        },
+        body: JSON.stringify(productData)
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(`添加商品失败：${response.status} - ${errorData.message || response.statusText}`);
+      }
+
+      console.log('商品添加成功！');
+      addProductForm.reset(); // 清空表单
+      fetchProducts(); // 重新加载商品列表
     } catch (error) {
-      console.error('更新商品时出错:', error);
-      alert('更新商品失败！');
+      console.error("无法添加商品:", error);
+      alert("添加商品失败：" + (error.message || '未知错误'));
     }
   }
 
-  // ----------------------------------------------------
-  // --- 事件监听区 (我们所有的“扳机”和“开关”都在这里) ---
-  // ----------------------------------------------------
+  // --- 删除商品的函数 ---
+  async function deleteProduct(productId) {
+    try {
+      if (!SUPABASE_URL || !SUPABASE_ANON_KEY) {
+        throw new Error("Supabase URL or Anon Key is missing. Cannot delete product.");
+      }
+      const response = await fetch(`${SUPABASE_URL}/rest/v1/products?id=eq.${productId}`, {
+        method: 'DELETE',
+        headers: {
+          'apikey': SUPABASE_ANON_KEY // 使用 anon key 进行删除操作
+        }
+      });
 
-  // 扳机1：监听“添加新商品”表单的提交
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(`删除商品失败：${response.status} - ${errorData.message || response.statusText}`);
+      }
+
+      console.log(`商品 ID: ${productId} 删除成功！`);
+    } catch (error) {
+      console.error("无法删除商品:", error);
+      alert("删除商品失败：" + (error.message || '未知错误'));
+    }
+  }
+
+  // --- 表单提交事件监听器 ---
   addProductForm.addEventListener('submit', async (event) => {
-    event.preventDefault();
+    event.preventDefault(); // 阻止表单默认提交行为
+
     const productData = {
       name: document.getElementById('product-name').value,
       description_en: document.getElementById('product-desc-en').value,
       description_zh: document.getElementById('product-desc-zh').value,
       description_ar: document.getElementById('product-desc-ar').value,
-      price: parseFloat(document.getElementById('product-price').value),
+      price: parseFloat(document.getElementById('product-price').value), // 转换为浮点数
       image_url: document.getElementById('product-image').value
     };
-    try {
-      const response = await fetch('http://localhost:3000/products', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(productData)
-      });
-      if (!response.ok) throw new Error('Network response was not ok');
-      addProductForm.reset();
-      fetchProducts();
-    } catch (error) {
-      console.error('添加商品失败:', error);
-      alert('添加商品失败，请检查控制台获取更多信息。');
+
+    // 可以在这里添加一些基本的表单验证
+    if (!productData.name || isNaN(productData.price)) {
+      alert('请输入商品名称和有效价格。');
+      return;
     }
+
+    await addProduct(productData);
   });
 
-  // 扳机2：监听商品列表中的所有点击（编辑/保存/取消/删除）
-  productsList.addEventListener('click', (event) => {
-    if (event.target.classList.contains('delete-btn')) {
-      const isConfirmed = confirm('你确定要删除这件商品吗？');
-      if (isConfirmed) {
-        const productId = event.target.dataset.id;
-        deleteProduct(productId);
-      }
-    }
-    if (event.target.classList.contains('edit-btn')) {
-      const editButton = event.target;
-      const listItem = editButton.closest('li');
-      const productId = editButton.dataset.id;
-      const originalName = listItem.querySelector('h3').textContent;
-      const originalDesc = listItem.querySelector('p:nth-of-type(1)').textContent.replace('描述: ', '');
-      const originalPrice = listItem.querySelector('p:nth-of-type(2)').textContent.replace('价格: $', '');
-      listItem.innerHTML = `
-        <input type="text" class="edit-name" value="${originalName}">
-        <input type="text" class="edit-desc" value="${originalDesc}">
-        <input type="number" step="0.01" class="edit-price" value="${originalPrice}">
-        <button class="save-btn" data-id="${productId}">保存</button>
-        <button class="cancel-btn">取消</button>
-      `;
-    }
-    if (event.target.classList.contains('save-btn')) {
-      const saveButton = event.target;
-      const listItem = saveButton.closest('li');
-      const productId = saveButton.dataset.id;
-      const updatedData = {
-        name: listItem.querySelector('.edit-name').value,
-        description_en: listItem.querySelector('.edit-desc').value,
-        price: parseFloat(listItem.querySelector('.edit-price').value),
-        description_zh: "（已更新）",
-        description_ar: "（已更新）",
-        image_url: "http://example.com/updated.jpg"
-      };
-      updateProduct(productId, updatedData);
-    }
-    if (event.target.classList.contains('cancel-btn')) {
-      fetchProducts();
-    }
-  });
-
-  // -----------------------------------
-  // --- 初始加载 (程序的起点) ---
-  // -----------------------------------
+  // --- 页面加载时初始获取商品列表 ---
   fetchProducts();
 
 });
